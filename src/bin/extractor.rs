@@ -2,34 +2,31 @@ use std::path::Path;
 use clap::{Command, Arg};
 use tree_sitter::{Parser, Tree, TreeCursor};
 
-fn find_function_range(cursor: &mut TreeCursor, is_children_viewed: bool, src: &str, target_function: &str) -> Option<(usize, usize)> {
-    let node = cursor.node();
-    if node.kind() == "identifier" {
-        if node.utf8_text(src.as_bytes()).unwrap() == target_function {
-            let parent = node.parent().unwrap();
-            println!("{}", parent.kind());
-            if parent.kind() == "method_declaration" {
-                return Some((parent.start_byte(), parent.end_byte()));
+fn find_function_range(cursor: &mut TreeCursor, src: &str, target_function: &str) -> Option<(usize, usize)> {
+    let mut stack: Vec<TreeCursor> = Vec::new();
+    stack.push(cursor.clone());
+
+    while let Some(mut cur_cursor) = stack.pop() {
+        let node = cur_cursor.node();
+
+        if node.kind() == "identifier" && node.utf8_text(src.as_bytes()).unwrap() == target_function {
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "method_declaration" {
+                    return Some((parent.start_byte(), parent.end_byte()));
+                }
+            }
+        }
+
+        // Explore children, then siblings, then move back to parent
+        if cur_cursor.goto_first_child() {
+            stack.push(cur_cursor.clone());
+            while cur_cursor.goto_next_sibling() {
+                stack.push(cur_cursor.clone());
             }
         }
     }
 
-    if cursor.node().parent().is_none() {
-        // cursor is root node
-        return None;
-    } else if is_children_viewed == false && cursor.goto_first_child() {
-        // cursor goto child node
-        return find_function_range(cursor, false, src, target_function);
-    } else if cursor.goto_next_sibling() {
-        // cursor goto sibling node
-        return find_function_range(cursor, false, src, target_function);
-    } else if cursor.goto_parent() {
-        // cursor goto parent node and prevent walking to child node
-        return find_function_range(cursor, true, src, target_function);
-    } else {
-        println!("something wrong with cursor");
-        return None;
-    }
+    None
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -79,18 +76,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let parse_tree: Tree = parser.parse(&src, None).unwrap();
     let mut cursor = parse_tree.walk();
-    if cursor.goto_first_child() {
-        match find_function_range(&mut cursor, false, &src, &target_function) {
-            Some((start, end)) => {
-                // println!("start: {}, end: {}", start, end);
-                println!("{}", &src[start..end]);
-            },
-            None => {
-                println!("target not found");
-            }
+    
+    match find_function_range(&mut cursor, &src, &target_function) {
+        Some((start, end)) => {
+            // println!("start: {}, end: {}", start, end);
+            println!("{}", &src[start..end]);
+        },
+        None => {
+            println!("target not found");
         }
-    } else {
-        println!("target not found");
     }
     Ok(())
 }

@@ -6,8 +6,6 @@
 ## Command
 
 ```shell
-cargo run -- -f <file-path> -t <function-name>
-
 cargo run --bin extractor -- -f <file-path> -t <function-name>
 ```
 
